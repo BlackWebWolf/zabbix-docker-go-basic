@@ -6,8 +6,11 @@ import (
 	"docker.io/go-docker/api/types"
 	"flag"
 	. "zabbix_sender/zabbix_lib"
+	 "encoding/json"
 )
-
+type containerData struct {
+		Name string `json:"{#CONTAINER}"`
+}
 func main() {
 
 	defaultHost := flag.String("zabbix", "localhost", "zabbix server e.g. '127.0.0.1'")
@@ -30,25 +33,20 @@ func main() {
 		panic(err)
 	}
 	var metrics []*Metric
-	datastring := `{"data":[`
-	for i, container := range containers {
-
-		var app string
-		if i < len(containers)-1 {
-			app = `{"{#CONTAINER}":"` + container.Names[0] + `"},`
-		} else {
-			app = `{"{#CONTAINER}":"` + container.Names[0] + `"}`
-		}
-		datastring = datastring + app
-
+	dataToJsonStruct := []*containerData{}
+	for _, container := range containers {
+		cont := &containerData{container.Names[0]}
+		dataToJsonStruct = append(dataToJsonStruct, cont)
 		metrics = append(metrics, NewMetric(*targetHost, "docker.["+container.Names[0]+"]", container.State))
-
 	}
-	datastring = datastring + `]}`
-	metrics = append(metrics, NewMetric(*targetHost, "docker.discovery", datastring))
+
+	dataJson := make(map[string][]*containerData)
+	dataJson["data"] = dataToJsonStruct
+	bufdataJson, _ := json.Marshal(dataJson)
+
+	metrics = append(metrics, NewMetric(*targetHost, "docker.discovery", string(bufdataJson)))
 
 	packet := NewPacket(metrics)
-	//
 	//// Send packet to zabbix
 	z := NewSender(*defaultHost, *defaultPort)
 	z.Send(packet)
